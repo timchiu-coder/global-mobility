@@ -3,77 +3,98 @@ import pandas as pd
 from bs4 import BeautifulSoup
 import re
 
-# 設置網頁標題
-st.set_page_config(page_title="直航必有因：航線數據提取器 V2", page_icon="✈️")
+# 設置網頁標題 / Set Page Config
+st.set_page_config(page_title="直航必有因 Flight Analysis", page_icon="✈️")
 
-st.title("✈️ 直航必有因：航線數據提取器")
-st.subheader("使用 BeautifulSoup 穩定解析版")
+# 1. 雙語 UI 標題 / Bilingual UI Header
+st.title("✈️ 直航必有因 / Direct Flight Analysis")
+st.subheader("機場航線數據提取器 / Airport Route Extractor")
 
 st.markdown("""
-將 FlightConnections 網頁的原始碼貼在下方。此版本會自動配對機場代碼與國家，更精確穩定。
+**[ZH]** 請將 FlightConnections 網頁的原始碼貼在下方。為了取得 **英文國家名稱**，建議從 [FlightConnections English Version](https://www.flightconnections.com/) 複製原始碼。  
+**[EN]** Please paste the FlightConnections source code below. To get **English country names**, it is recommended to copy the source from the English version of the site.
 """)
 
-# 使用者輸入區域
-html_data = st.text_area("請貼上網頁原始碼 (HTML)", height=300, placeholder="<html>...</html>")
+# 2. 使用者輸入區域 / User Input Area
+label_text = "請貼上網頁原始碼 (HTML) / Paste HTML Source Code Here"
+html_data = st.text_area(label_text, height=250, placeholder="<html>...</html>")
 
-if st.button("開始提取數據"):
+# 3. 執行按鈕 / Action Button
+button_text = "開始提取數據 / Extract Data"
+if st.button(button_text):
     if html_data:
         try:
-            # 初始化 BeautifulSoup
             soup = BeautifulSoup(html_data, 'html.parser')
-            
             route_list = []
             
-            # FlightConnections 的規律：航線通常在 <a> 標籤中，且帶有 data-a 屬性
-            # 內含 <img> 標籤，其 alt 屬性為目的地名稱
+            # 尋找所有包含航線資訊的連結 / Finding route links
             links = soup.find_all('a', attrs={'data-a': True})
             
             for link in links:
-                # 1. 提取機場代碼 (從 data-a="... (TPE)" 中擷取)
+                # 提取 IATA Code
                 data_a = link.get('data-a', '')
                 code_match = re.search(r'\((.*?)\)', data_a)
-                airport_code = code_match.group(1).upper() if code_match else None
+                iata_code = code_match.group(1).upper() if code_match else None
                 
-                # 2. 提取目的地名稱 (從 <img> 的 alt 屬性中擷取)
+                # 提取目的地與國家 / Extract Destination & Country
                 img_tag = link.find('img')
-                destination = img_tag.get('alt', '') if img_tag else ""
+                raw_dest = img_tag.get('alt', '') if img_tag else ""
                 
-                # 如果兩者都有抓到，才加入清單
-                if airport_code and destination:
+                # 邏輯精進：拆分 城市 與 國家
+                # 通常格式為 "Tokyo (NRT), Japan" 或 "東京 (NRT), 日本"
+                if iata_code and raw_dest:
+                    if "," in raw_dest:
+                        parts = raw_dest.split(",")
+                        dest_name = parts[0].strip()
+                        country_name = parts[1].strip()
+                    else:
+                        dest_name = raw_dest
+                        country_name = "Unknown"
+
                     route_list.append({
-                        "機場代碼": airport_code,
-                        "目的地與國家": destination
+                        "IATA Code": iata_code,
+                        "Destination (城市/機場)": dest_name,
+                        "Country (國家)": country_name
                     })
             
             if route_list:
                 df = pd.DataFrame(route_list)
-                # 去除重複項
                 df = df.drop_duplicates().reset_index(drop=True)
                 
-                st.success(f"✅ 成功提取 {len(df)} 條配對正確的航線！")
+                st.success(f"✅ 成功提取 {len(df)} 條航線！ / Successfully extracted {len(df)} routes!")
                 
-                # 數據預覽
+                # 顯示數據表格 / Show Data Table
                 st.dataframe(df, use_container_width=True)
                 
-                # 下載 CSV 功能
+                # 下載 CSV / Download CSV
                 csv = df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(
-                    label="📥 下載資料為 CSV",
+                    label="📥 下載 CSV / Download CSV",
                     data=csv,
-                    file_name='airport_routes_bs4.csv',
+                    file_name='airport_routes_bilingual.csv',
                     mime='text/csv',
                 )
             else:
-                st.warning("未能從原始碼中解析出航線。請確認是否為正確的 FlightConnections 機場頁面原始碼。")
+                st.warning("未能解析出數據。 / No data found.")
                 
         except Exception as e:
-            st.error(f"解析過程中發生錯誤: {e}")
+            st.error(f"錯誤 / Error: {e}")
     else:
-        st.error("請先貼上內容！")
+        st.error("請提供原始碼。 / Please provide source code.")
 
-with st.expander("為什麼這個版本更穩定？"):
-    st.write("""
-    1. **物件導向解析**：不再只是盲目搜尋字串，而是尋找真實的 HTML 連結元件。
-    2. **屬性綁定**：保證 `data-a` (代碼) 是從同一個 `<a>` 標籤中跟 `alt` (名稱) 一起抓出來的，不會發生錯位。
-    3. **容錯性高**：即使 HTML 標籤中間多了換行或空格，BeautifulSoup 也能正確識別。
+# 側邊欄說明 / Sidebar Info
+with st.sidebar:
+    st.header("教學重點 / Teaching Points")
+    st.info("""
+    **1. 直航必有因 (Direct Flight Analysis):**
+    觀察航線分布，探討背後的政治、經濟與文化聯繫。
+    Explore the political, economic, and cultural ties behind flight routes.
+
+    **2. 數據標準化 (Data Standardization):**
+    使用 IATA Code (如 TPE, FCO) 進行全球統一標註。
+    Use IATA codes for global standardization.
+
+    **3. 英文國家名稱 (English Country Names):**
+    接軌國際地理數據與 Python 地圖庫 (如 Folium)。
+    Compatible with international geographic data and map libraries.
     """)
